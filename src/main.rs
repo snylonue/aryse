@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::input::keyboard::KeyboardInput;
+use bevy::prelude::*;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -13,6 +13,9 @@ struct Playlist {
 struct OpenImage(PathBuf);
 
 struct ImageTimer(Timer);
+
+#[derive(Debug, Default)]
+struct LastId(Option<Entity>);
 
 impl Playlist {
     pub fn new(sources: Vec<PathBuf>) -> Self {
@@ -41,14 +44,21 @@ fn open_image(
     mut ev_open_img: EventReader<OpenImage>,
     asset_sever: Res<AssetServer>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut last_id: ResMut<LastId>,
     mut commands: Commands,
 ) {
     for OpenImage(ref path) in ev_open_img.iter() {
         let handle = asset_sever.load(dbg!(path).as_path());
-        commands.spawn_bundle(SpriteBundle {
-            material: materials.add(handle.into()),
-            ..Default::default()
-        });
+        let id = commands
+            .spawn_bundle(SpriteBundle {
+                material: materials.add(handle.into()),
+                ..Default::default()
+            })
+            .id();
+        if let Some(id) = last_id.0 {
+            commands.entity(id).remove_bundle::<SpriteBundle>();
+        }
+        last_id.0.replace(id);
     }
 }
 
@@ -72,6 +82,7 @@ fn main() {
     App::build()
         .add_event::<OpenImage>()
         .insert_resource(ImageTimer(Timer::from_seconds(1.0, true)))
+        .init_resource::<LastId>()
         .add_plugins(DefaultPlugins)
         .add_startup_system(setup.system())
         .add_system(open_image.system())
