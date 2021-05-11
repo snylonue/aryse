@@ -19,18 +19,22 @@ impl Playlist {
         Self { sources, pos: 0 }
     }
     pub fn next(&mut self) -> &Path {
-        let tmp = self.sources[self.pos].as_path();
         self.pos = (self.pos + 1) % self.sources.len();
-        tmp
+        &self.sources[self.pos]
+    }
+    pub fn current(&self) -> &Path {
+        &self.sources[self.pos]
     }
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, mut ev_open_img: EventWriter<OpenImage>) {
     let app = cli::app().get_matches();
     let images = app.values_of("image").unwrap().map(Into::into).collect();
     let playlist = Playlist::new(images);
+    let first = playlist.current().to_owned();
     commands.insert_resource(playlist);
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    ev_open_img.send(OpenImage(first));
 }
 
 fn open_image(
