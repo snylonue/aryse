@@ -1,5 +1,5 @@
-use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
+use bevy::{input::keyboard::KeyboardInput, render::render_graph::base::MainPass};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -55,8 +55,18 @@ fn open_image(
                 ..Default::default()
             })
             .id();
-        if let Some(id) = last_id.0 {
-            commands.entity(id).remove_bundle::<SpriteBundle>();
+        if let Some(pre_id) = last_id.0 {
+            commands
+                .entity(pre_id)
+                .remove::<Sprite>()
+                .remove::<Handle<Mesh>>()
+                .remove::<MainPass>()
+                .remove::<Draw>()
+                .remove::<Visible>()
+                .remove::<RenderPipelines>()
+                .remove::<Transform>()
+                .remove::<GlobalTransform>();
+            // ev_hide_img.send(HideImage(pre_id));
         }
         last_id.0.replace(id);
     }
