@@ -1,5 +1,6 @@
+use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
-use bevy::{input::keyboard::KeyboardInput, render::render_graph::base::MainPass};
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,10 +13,12 @@ struct Playlist {
 }
 struct OpenImage(PathBuf);
 
-struct ImageTimer(Timer);
+struct CurrentImage;
+
+struct Cached;
 
 #[derive(Debug, Default)]
-struct LastId(Option<Entity>);
+struct Cache(HashMap<PathBuf, Entity>);
 
 impl Playlist {
     pub fn new(sources: Vec<PathBuf>) -> Self {
@@ -44,31 +47,41 @@ fn open_image(
     mut ev_open_img: EventReader<OpenImage>,
     asset_sever: Res<AssetServer>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut last_id: ResMut<LastId>,
+    mut queries: QuerySet<(
+        Query<(&mut Visible, Entity), With<CurrentImage>>,
+        Query<(&mut Visible, Entity), With<Cached>>,
+    )>,
+    mut cache: ResMut<Cache>,
     mut commands: Commands,
 ) {
-    for OpenImage(ref path) in ev_open_img.iter() {
-        let handle = asset_sever.load(dbg!(path).as_path());
-        let id = commands
-            .spawn_bundle(SpriteBundle {
-                material: materials.add(handle.into()),
-                ..Default::default()
-            })
-            .id();
-        if let Some(pre_id) = last_id.0 {
-            commands
-                .entity(pre_id)
-                .remove::<Sprite>()
-                .remove::<Handle<Mesh>>()
-                .remove::<MainPass>()
-                .remove::<Draw>()
-                .remove::<Visible>()
-                .remove::<RenderPipelines>()
-                .remove::<Transform>()
-                .remove::<GlobalTransform>();
-            // ev_hide_img.send(HideImage(pre_id));
+    for OpenImage(path) in ev_open_img.iter() {
+        if let Some((mut vis, id)) = queries.q0_mut().iter_mut().next() {
+            vis.is_visible = false;
+            commands.entity(id).remove::<CurrentImage>();
         }
-        last_id.0.replace(id);
+        match cache.0.get(path) {
+            Some(id) => {
+                let (mut vis, id) = queries
+                    .q1_mut()
+                    .iter_mut()
+                    .find(|(_, imgid)| imgid == id)
+                    .unwrap();
+                commands.entity(id).insert(CurrentImage);
+                vis.is_visible = true;
+            }
+            None => {
+                let handle = asset_sever.load(path.as_path());
+                let id = commands
+                    .spawn_bundle(SpriteBundle {
+                        material: materials.add(handle.into()),
+                        ..Default::default()
+                    })
+                    .insert(Cached)
+                    .insert(CurrentImage)
+                    .id();
+                cache.0.insert(path.to_owned(), id);
+            }
+        }
     }
 }
 
@@ -91,8 +104,7 @@ fn keyboard(
 fn main() {
     App::build()
         .add_event::<OpenImage>()
-        .insert_resource(ImageTimer(Timer::from_seconds(1.0, true)))
-        .init_resource::<LastId>()
+        .init_resource::<Cache>()
         .add_plugins(DefaultPlugins)
         .add_startup_system(setup.system())
         .add_system(open_image.system())
